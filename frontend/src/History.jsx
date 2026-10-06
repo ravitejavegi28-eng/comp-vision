@@ -1,0 +1,13 @@
+import { useState } from 'react';
+import { ClipboardCheck, Download, History as HistoryIcon } from 'lucide-react';
+import { date, number, request } from './api.js';
+import { Badge, Button, EmptyState, ErrorNotice, PageHeading, useResource } from './ui.jsx';
+
+export default function History({ productId, revision, refresh }) {
+  const source = useResource('/api/inspections', productId, revision, false, 'limit=100');
+  const [selected, setSelected] = useState(null);
+  const [error, setError] = useState('');
+  const items = source.data?.items || [];
+  async function review(item, decision) { setError(''); try { await request(`/api/inspections/${item.id}/review`, { method: 'POST', productId, json: { decision, note: item.review?.note || '' } }); refresh(); } catch (requestError) { setError(requestError.message); } }
+  return <><PageHeading title="Inspection history" description="Each result keeps its source, score, thresholds, and human review."><a className="button secondary" href={`/api/inspections/export?product_id=${encodeURIComponent(productId)}`}><Download size={16} />Export CSV</a></PageHeading><ErrorNotice onDismiss={() => setError('')}>{error || source.error}</ErrorNotice>{items.length ? <div className="history-layout"><section className="history-list">{items.map(item => <button key={item.id} className={`history-item ${selected?.id === item.id ? 'active' : ''}`} onClick={() => setSelected(item)}><img src={item.image_url} alt="" /><span><Badge decision={item.decision} /><strong>{date(item.created_at)}</strong><small>{item.score === null ? 'Quality check required recapture' : `Score ${number(item.score, 4)} · ${number(item.latency_ms, 0)} ms`}</small></span></button>)}</section><section className="history-detail">{selected ? <><img src={selected.overlay_url || selected.image_url} alt="Selected inspection" /><Badge decision={selected.decision} /><h2>{selected.decision === 'fail' ? 'Anomaly flagged' : selected.decision === 'pass' ? 'Within normal range' : 'Inspection result'}</h2><p>Machine decision: {selected.decision}. {selected.review ? `Operator decision: ${selected.review.decision}.` : 'No operator review yet.'}</p><div className="history-actions"><Button onClick={() => review(selected, 'pass')}>Mark pass</Button><Button onClick={() => review(selected, 'review')}>Mark review</Button><Button onClick={() => review(selected, 'fail')}>Mark fail</Button></div></> : <EmptyState title="Select an inspection">Choose an item to review its trace.</EmptyState>}</section></div> : <EmptyState icon={HistoryIcon} title="No inspections saved">Run an inspection and the full trace appears here.</EmptyState>}</>;
+}
